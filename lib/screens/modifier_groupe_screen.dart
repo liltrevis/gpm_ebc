@@ -321,7 +321,32 @@ class _ModifierGroupeScreenState extends State<ModifierGroupeScreen> {
   Widget build(BuildContext context) {
     final ref = context.watch<ReferentielProvider>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Modifier un groupe')),
+      appBar: AppBar(
+        title: const Text('Modifier un groupe'),
+        // L'action reste visible en haut pendant le defilement de la liste.
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: Center(
+              child: FilledButton.icon(
+                onPressed: (_enCours || _champ == null) ? null : _appliquer,
+                style: FilledButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                icon: _enCours
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.save_alt, size: 18),
+                label: Text('Appliquer (${_selection.length})'),
+              ),
+            ),
+          ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -398,17 +423,6 @@ class _ModifierGroupeScreenState extends State<ModifierGroupeScreen> {
                       ),
                     );
                   }),
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: (_enCours || _champ == null) ? null : _appliquer,
-                  icon: _enCours
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.save_alt),
-                  label: Text('Appliquer (${_selection.length})'),
-                ),
                 const SizedBox(height: 24),
               ],
             ),
