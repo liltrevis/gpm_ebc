@@ -10,7 +10,6 @@ import '../providers/auth_provider.dart';
 import '../providers/dashboard_provider.dart';
 import '../providers/personnel_provider.dart';
 import '../providers/referentiel_provider.dart';
-import '../providers/service_provider.dart';
 import '../services/excel_service.dart';
 import '../services/pdf_service.dart';
 import '../widgets/colonnes_etat_dialog.dart';
@@ -41,11 +40,9 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
   String? _position;
   String? _precision;
   List<String> _precisions = [];
+  final Map<String, int> _composition = {};
 
-  Set<int> _idsDeFaction = {};
-  bool _propositionActive = false;
-  FiltreProposition _filtreActif = FiltreProposition.disponiblesAvecFaction;
-  Map<String, int> _composition = {};
+  String? _categorieAffichage;
 
   bool get _estListe => widget.mode == ModeEtat.liste;
 
@@ -58,7 +55,6 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
     }
     _charger();
     if (!_estListe) _chargerPrecisions();
-    _chargerFactions();
   }
 
   Future<void> _charger() async {
@@ -75,20 +71,6 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
       }
       _loading = false;
     });
-  }
-
-  Future<void> _chargerFactions() async {
-    try {
-      final prov = context.read<ServiceProvider>();
-      await prov.chargerPositions();
-      if (!mounted) return;
-      setState(() {
-        _idsDeFaction = {
-          for (final e in prov.positionsService.entries)
-            if (e.value == 'De faction') e.key,
-        };
-      });
-    } catch (_) {}
   }
 
   Future<void> _chargerPrecisions() async {
@@ -175,7 +157,9 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
   int _rang(int index) {
     var n = 0;
     for (var j = 0; j <= index; j++) {
-      if (!_exclus.contains(j)) n++;
+      if (_exclus.contains(j)) continue;
+      if (_estListe && !_dansCategorie(_membres[j])) continue;
+      n++;
     }
     return n;
   }
@@ -183,17 +167,17 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
   List<Personnel> get _inclus {
     final res = <Personnel>[];
     for (var i = 0; i < _membres.length; i++) {
-      if (!_exclus.contains(i)) res.add(_membres[i]);
+      if (_exclus.contains(i)) continue;
+      if (_estListe && !_dansCategorie(_membres[i])) continue;
+      res.add(_membres[i]);
     }
     return res;
   }
 
-  int? _indexDe(Personnel p) {
-    for (var i = 0; i < _membres.length; i++) {
-      if (identical(_membres[i], p)) return i;
-      if (p.id != null && _membres[i].id == p.id) return i;
-    }
-    return null;
+  bool _dansCategorie(Personnel p) {
+    if (_categorieAffichage == null) return true;
+    return categorieDe(p).toLowerCase() ==
+        _categorieAffichage!.trim().toLowerCase();
   }
 
   List<Map<String, Object?>> _construireConcernes() {
@@ -201,6 +185,7 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
     var n = 0;
     for (var i = 0; i < _membres.length; i++) {
       if (_exclus.contains(i)) continue;
+      if (_estListe && !_dansCategorie(_membres[i])) continue;
       n++;
       res.add(concernesDepuisPersonnel(
         _membres[i],
@@ -224,151 +209,6 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // Proposition de liste (mode liste uniquement).
-  // ---------------------------------------------------------------------------
-  Future<void> _proposerListe() async {
-    if (!_estListe) return;
-    final ref = context.read<ReferentielProvider>();
-    if (ref.categories.isEmpty) {
-      try {
-        await ref.charger();
-      } catch (_) {}
-    }
-    final cats = <String>{
-      for (final c in ref.categories) c.libelle,
-      for (final p in _membres) categorieDe(p),
-    }.toList()
-      ..sort((a, b) => ordreCategorie(a).compareTo(ordreCategorie(b)));
-
-    final totalCtrl = TextEditingController();
-    final ctrlCat = <String, TextEditingController>{
-      for (final c in cats) c: TextEditingController(),
-    };
-    var filtre = _filtreActif;
-
-    if (!mounted) return;
-    final demande = await showDialog<PropositionDemande>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDlg) => AlertDialog(
-          title: const Text('Proposer une liste'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: totalCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                      labelText: 'Nombre total', isDense: true),
-                ),
-                const SizedBox(height: 12),
-                const Text('Nombre par catégorie de grade',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                for (final c in cats)
-                  TextField(
-                    controller: ctrlCat[c],
-                    keyboardType: TextInputType.number,
-                    decoration:
-                        InputDecoration(labelText: c, isDense: true),
-                  ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<FiltreProposition>(
-                  initialValue: filtre,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                      labelText: 'Filtre', isDense: true),
-                  items: [
-                    for (final e in kFiltresProposition.entries)
-                      DropdownMenuItem(value: e.key, child: Text(e.value)),
-                  ],
-                  onChanged: (v) => setDlg(() => filtre = v ?? filtre),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
-            FilledButton(
-              onPressed: () {
-                final total = int.tryParse(totalCtrl.text.trim()) ?? 0;
-                final parCat = <String, int>{};
-                ctrlCat.forEach((k, ctl) {
-                  final n = int.tryParse(ctl.text.trim()) ?? 0;
-                  if (n > 0) parCat[k] = n;
-                });
-                Navigator.pop(
-                  ctx,
-                  PropositionDemande(
-                      total: total, parCategorie: parCat, filtre: filtre),
-                );
-              },
-              child: const Text('Proposer'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    for (final c in ctrlCat.values) {
-      c.dispose();
-    }
-    totalCtrl.dispose();
-    if (demande == null) return;
-    _appliquerProposition(demande);
-  }
-
-  void _appliquerProposition(PropositionDemande demande) {
-    final choisis = proposerListe(
-      membres: _membres,
-      demande: demande,
-      deFaction: _idsDeFaction,
-    );
-    if (choisis.isEmpty) {
-      _snack('Aucun candidat ne correspond à la proposition.');
-      return;
-    }
-    final ids = choisis.map((p) => p.id).whereType<int>().toSet();
-    setState(() {
-      _exclus.clear();
-      for (var i = 0; i < _membres.length; i++) {
-        final id = _membres[i].id;
-        if (id == null || !ids.contains(id)) _exclus.add(i);
-      }
-      _propositionActive = true;
-      _filtreActif = demande.filtre;
-      _composition = {
-        ...demande.parCategorie,
-        if (demande.total > 0) 'Total': demande.total,
-      };
-    });
-    _snack('${choisis.length} personne(s) proposée(s). Validez ou remplacez.');
-  }
-
-  void _remplacer(Personnel remplace) {
-    final nouveau = remplacantPour(
-      remplace: remplace,
-      selection: _inclus,
-      membres: _membres,
-      deFaction: _idsDeFaction,
-      filtre: _filtreActif,
-    );
-    if (nouveau == null) {
-      _snack('Aucun remplaçant disponible dans la même catégorie.');
-      return;
-    }
-    setState(() {
-      final iOld = _indexDe(remplace);
-      final iNew = _indexDe(nouveau);
-      if (iOld != null) _exclus.add(iOld);
-      if (iNew != null) _exclus.remove(iNew);
-    });
-  }
-
-  // ---------------------------------------------------------------------------
   // Export / enregistrement.
   // ---------------------------------------------------------------------------
   Future<void> _exporter({required bool pdf}) async {
@@ -384,8 +224,8 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
     if (colonnes == null) return;
     final concernes = _construireConcernes();
     final sousTitre = _estListe
-        ? 'Liste${_dureeValeur == null ? '' : ' - Durée ${_dureeValeur!}'}'
-        : '$_position${_dureeValeur == null ? '' : ' - Durée ${_dureeValeur!}'}';
+        ? 'Liste${_dureeValeur == null ? '' : ' - Dur├®e ${_dureeValeur!}'}'
+        : '$_position${_dureeValeur == null ? '' : ' - Dur├®e ${_dureeValeur!}'}';
     try {
       if (pdf) {
         final bytes = await PdfService.etatListe(
@@ -433,7 +273,7 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
         utilisateurId: auth.user?.id,
       );
       if (!mounted) return;
-      _snack('Liste "$nom" enregistrée (${inclus.length} personne(s)).');
+      _snack('Liste "$nom" enregistr├®e (${inclus.length} personne(s)).');
       Navigator.of(context).pop(true);
       return;
     }
@@ -453,7 +293,7 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
           'Enregistrer l\'etat "$nom" (${inclus.length} personne(s)) ?\n\n'
           'Mettre a jour la position des personnes incluses vers "$pos"'
           '${precision == null ? '' : ' ($precision)'} ?\n'
-          'Durée : ${texteDuree(_dureeValeur)}',
+          'Dur├®e : ${texteDuree(_dureeValeur)}',
         ),
         actions: [
           TextButton(
@@ -494,59 +334,14 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
   }
 
   String _slug(String texte) => texte
-      .replaceAll('é', 'e')
-      .replaceAll('è', 'e')
-      .replaceAll('à', 'a')
+      .replaceAll('├®', 'e')
+      .replaceAll('├¿', 'e')
+      .replaceAll('├á', 'a')
       .replaceAll(' ', '_')
       .replaceAll(RegExp(r'[^A-Za-z0-9_]'), '');
 
   void _snack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  Widget _carteProposition() {
-    final inclus = _inclus;
-    return Card(
-      color: Colors.blue.withValues(alpha: 0.06),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.auto_awesome, size: 18, color: Colors.blue),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text('Liste proposée (${inclus.length})',
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                ),
-                TextButton(
-                  onPressed: () => setState(() => _propositionActive = false),
-                  child: const Text('Fermer'),
-                ),
-              ],
-            ),
-            for (var i = 0; i < inclus.length; i++)
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${i + 1}. ${inclus[i].nomPrenoms}  (${categorieDe(inclus[i])})',
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                  ),
-                  TextButton.icon(
-                    onPressed: () => _remplacer(inclus[i]),
-                    icon: const Icon(Icons.swap_horiz, size: 16),
-                    label: const Text('Remplacer'),
-                  ),
-                ],
-              ),
-          ],
-        ),
-      ),
-    );
   }
 
   @override
@@ -582,8 +377,8 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
                 TextField(
                   controller: _duree,
                   decoration: const InputDecoration(
-                    labelText: 'Durée',
-                    hintText: 'ex : 15 jours — vide = indéterminé',
+                    labelText: 'Dur├®e',
+                    hintText: 'ex : 15 jours ÔÇö vide = ind├®termin├®',
                     prefixIcon: Icon(Icons.schedule),
                   ),
                 ),
@@ -639,15 +434,25 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
                 ],
                 if (_estListe) ...[
                   const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: _membres.isEmpty ? null : _proposerListe,
-                    icon: const Icon(Icons.auto_awesome),
-                    label: const Text('Proposer une liste'),
+                  DropdownButtonFormField<String>(
+                    initialValue: _categorieAffichage,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                        labelText: 'Afficher', prefixIcon: Icon(Icons.filter_list)),
+                    items: [
+                      const DropdownMenuItem<String>(
+                          value: null, child: Text('Tout le monde')),
+                      const DropdownMenuItem<String>(
+                          value: 'Officier', child: Text('Officier')),
+                      const DropdownMenuItem<String>(
+                          value: 'Sous-officier',
+                          child: Text('Sous-officier')),
+                      const DropdownMenuItem<String>(
+                          value: 'Militaire du rang',
+                          child: Text('Militaire du rang')),
+                    ],
+                    onChanged: (v) => setState(() => _categorieAffichage = v),
                   ),
-                ],
-                if (_estListe && _propositionActive) ...[
-                  const SizedBox(height: 12),
-                  _carteProposition(),
                 ],
                 const SizedBox(height: 12),
                 Row(
@@ -663,12 +468,12 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
                     TextButton.icon(
                       onPressed: _membres.isEmpty ? null : _toutSelectionner,
                       icon: const Icon(Icons.check_box_outlined, size: 18),
-                      label: const Text('Tout sélectionner'),
+                      label: const Text('Tout s├®lectionner'),
                     ),
                     TextButton.icon(
                       onPressed: _membres.isEmpty ? null : _toutDecocher,
                       icon: const Icon(Icons.check_box_outline_blank, size: 18),
-                      label: const Text('Tout décocher'),
+                      label: const Text('Tout d├®cocher'),
                     ),
                   ],
                 ),
@@ -680,7 +485,7 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
                   ..._membres.asMap().entries.map((e) {
                     final i = e.key;
                     final p = e.value;
-                    final inclus = !_exclus.contains(i);
+                    final inclus = !_exclus.contains(i) && _dansCategorie(p);
                     return CheckboxListTile(
                       value: inclus,
                       onChanged: (v) => setState(() {
