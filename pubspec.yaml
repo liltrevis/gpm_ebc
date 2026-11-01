@@ -1,0 +1,51 @@
+name: gpm_ebc
+description: "GPM-2EBC - Application mobile de gestion du personnel du 2e Escadron Blindé de Combat (offline-first)."
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  # Base de données locale (offline-first)
+  sqflite: ^2.4.1
+  # SQLite sur desktop (Windows/Linux) via FFI. sqlite3 v3 fournit la librairie
+  # native automatiquement (plus besoin de sqlite3_flutter_libs).
+  sqflite_common_ffi: ^2.4.0
+  path: ^1.9.0
+  path_provider: ^2.1.5
+  crypto: ^3.0.0
+  # Gestion d'état
+  provider: ^6.1.2
+  # Exports (versions compatibles : xml en 6.x)
+  pdf: 3.11.3
+  printing: ^5.13.4
+  excel: 4.0.6
+  # Manipulation d'archives (incrustation du logo dans les .xlsx)
+  archive: ^3.6.1
+  file_picker: ^13.1.0
+  share_plus: ^13.3.1
+  local_auth: ^3.0.2
+  flutter_secure_storage: ^11.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/logo.png
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  image_path: "assets/images/app_icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/images/app_icon_foreground.png"
