@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/champs_personnel.dart';
+import '../core/constants.dart';
 import '../core/format.dart';
 import '../core/positions.dart';
 import '../models/personnel.dart';
@@ -36,6 +37,9 @@ class _ModifierGroupeScreenState extends State<ModifierGroupeScreen> {
   bool _loading = true;
   bool _enCours = false;
 
+  /// Categorie de grade (code) imposee par le menu "Afficher" (null = tout).
+  String? _categorieAffichage;
+
   ChampPersonnel? _champ;
   int? _valeurRef;
   bool _estAutre = false;
@@ -68,20 +72,39 @@ class _ModifierGroupeScreenState extends State<ModifierGroupeScreen> {
   }
 
   List<Personnel> get _visibles {
+    var liste = _membres;
     final q = _recherche.text.trim().toLowerCase();
-    if (q.isEmpty) return _membres;
-    return _membres.where((p) {
-      final texte = '${p.nomPrenoms} ${p.matricule ?? ''} '
-              '${p.mecano ?? ''} ${p.gradeCode ?? ''} ${p.gradeLibelle ?? ''}'
-          .toLowerCase();
-      return texte.contains(q);
-    }).toList();
+    if (q.isNotEmpty) {
+      liste = liste.where((p) {
+        final texte = '${p.nomPrenoms} ${p.matricule ?? ''} '
+                '${p.mecano ?? ''} ${p.gradeCode ?? ''} ${p.gradeLibelle ?? ''}'
+            .toLowerCase();
+        return texte.contains(q);
+      }).toList();
+    }
+    if (_categorieAffichage != null) {
+      liste = liste
+          .where((p) => categorieDepuisGrade(p.gradeCode) == _categorieAffichage)
+          .toList();
+    }
+    return liste;
   }
 
   void _toutSelectionner() => setState(() =>
       _selection.addAll(_visibles.map((p) => p.id).whereType<int>()));
 
   void _toutDecocher() => setState(() => _selection.clear());
+
+  Future<void> _ouvrirCategorie() async {
+    final resultat = await showModalBottomSheet<String?>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _CategoriePanel(initial: _categorieAffichage),
+    );
+    if (resultat != null && mounted) {
+      setState(() => _categorieAffichage = resultat);
+    }
+  }
 
   void _changerChamp(ChampPersonnel? champ) {
     setState(() {
@@ -349,81 +372,101 @@ class _ModifierGroupeScreenState extends State<ModifierGroupeScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
+          : Column(
               children: [
-                DropdownButtonFormField<ChampPersonnel>(
-                  initialValue: _champ,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Information a modifier *',
-                    prefixIcon: Icon(Icons.edit_note),
-                  ),
-                  items: [
-                    for (final c in kChampsPersonnel)
-                      DropdownMenuItem(value: c, child: Text(c.libelle)),
-                  ],
-                  onChanged: _enCours ? null : _changerChamp,
-                ),
-                const SizedBox(height: 12),
-                if (_champ != null) _champValeur(ref),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Personnes concernees',
-                        style: Theme.of(context).textTheme.titleSmall),
-                    Text('${_selection.length} / ${_membres.length}'),
-                  ],
-                ),
-                TextField(
-                  controller: _recherche,
-                  decoration: const InputDecoration(
-                    hintText: 'Rechercher (nom, matricule, mecano, grade)',
-                    prefixIcon: Icon(Icons.search),
-                    isDense: true,
-                  ),
-                  onChanged: (_) => setState(() {}),
-                ),
-                Row(
-                  children: [
-                    TextButton.icon(
-                      onPressed: _visibles.isEmpty ? null : _toutSelectionner,
-                      icon: const Icon(Icons.check_box_outlined, size: 18),
-                      label: const Text('Tout sélectionner'),
-                    ),
-                    TextButton.icon(
-                      onPressed: _selection.isEmpty ? null : _toutDecocher,
-                      icon: const Icon(Icons.check_box_outline_blank, size: 18),
-                      label: const Text('Tout décocher'),
-                    ),
-                  ],
-                ),
-                if (_visibles.isEmpty)
-                  const Card(child: ListTile(title: Text('Aucun personnel.')))
-                else
-                  ..._visibles.map((p) {
-                    return CheckboxListTile(
-                      value: _inclut(p),
-                      onChanged: _enCours
-                          ? null
-                          : (v) => setState(() {
-                                if (v == true) {
-                                  _selection.add(p.id!);
-                                } else {
-                                  _selection.remove(p.id);
-                                }
-                              }),
-                      controlAffinity: ListTileControlAffinity.leading,
-                      dense: true,
-                      title: Text(p.nomPrenoms),
-                      subtitle: Text(
-                        '${p.gradeCode ?? p.gradeLibelle ?? ''} '
-                        '${p.matricule ?? ''} - ${p.sectionLibelle ?? '-'}',
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      DropdownButtonFormField<ChampPersonnel>(
+                        initialValue: _champ,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Information a modifier *',
+                          prefixIcon: Icon(Icons.edit_note),
+                        ),
+                        items: [
+                          for (final c in kChampsPersonnel)
+                            DropdownMenuItem(value: c, child: Text(c.libelle)),
+                        ],
+                        onChanged: _enCours ? null : _changerChamp,
                       ),
-                    );
-                  }),
-                const SizedBox(height: 24),
+                      const SizedBox(height: 12),
+                      if (_champ != null) _champValeur(ref),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Personnes concernees',
+                              style: Theme.of(context).textTheme.titleSmall),
+                          Text('${_selection.length} / ${_membres.length}'),
+                        ],
+                      ),
+                      TextField(
+                        controller: _recherche,
+                        decoration: const InputDecoration(
+                          hintText: 'Rechercher (nom, matricule, mecano, grade)',
+                          prefixIcon: Icon(Icons.search),
+                          isDense: true,
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                      Row(
+                        children: [
+                          TextButton.icon(
+                            onPressed: _visibles.isEmpty ? null : _toutSelectionner,
+                            icon: const Icon(Icons.check_box_outlined, size: 18),
+                            label: const Text('Tout sélectionner'),
+                          ),
+                          TextButton.icon(
+                            onPressed: _selection.isEmpty ? null : _toutDecocher,
+                            icon: const Icon(Icons.check_box_outline_blank, size: 18),
+                            label: const Text('Tout décocher'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: _ouvrirCategorie,
+                        icon: const Icon(Icons.filter_list),
+                        label: const Text('Afficher'),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      if (_visibles.isEmpty)
+                        const Card(
+                            child: ListTile(title: Text('Aucun personnel.'))),
+                      ..._visibles.map((p) {
+                        return CheckboxListTile(
+                          value: _inclut(p),
+                          onChanged: _enCours
+                              ? null
+                              : (v) => setState(() {
+                                    if (v == true) {
+                                      _selection.add(p.id!);
+                                    } else {
+                                      _selection.remove(p.id);
+                                    }
+                                  }),
+                          controlAffinity: ListTileControlAffinity.leading,
+                          dense: true,
+                          title: Text(p.nomPrenoms),
+                          subtitle: Text(
+                            '${p.gradeCode ?? p.gradeLibelle ?? ''} '
+                            '${p.matricule ?? ''} - ${p.sectionLibelle ?? '-'}',
+                          ),
+                        );
+                      }),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
               ],
             ),
     );
@@ -602,5 +645,58 @@ class _ModifierGroupeScreenState extends State<ModifierGroupeScreen> {
 
   void _snack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+/// Panneau de choix de la categorie affichee (menu "Afficher").
+class _CategoriePanel extends StatefulWidget {
+  final String? initial;
+  const _CategoriePanel({required this.initial});
+  @override
+  State<_CategoriePanel> createState() => _CategoriePanelState();
+}
+class _CategoriePanelState extends State<_CategoriePanel> {
+  late String? _categorie;
+  static const List<String> _codes = <String>['TOUT', 'OFF', 'S-OFF', 'MDR'];
+  String _libelle(String code) {
+    if (code == 'TOUT') return 'Tout le monde';
+    return kCategories[code] ?? code;
+  }
+  @override
+  void initState() {
+    super.initState();
+    _categorie = widget.initial;
+  }
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Afficher', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            for (final code in _codes) ...[
+              CheckboxListTile(
+                value: _categorie == (code == 'TOUT' ? null : code),
+                onChanged: (v) => setState(() {
+                  final valeur =
+                      (v ?? false) ? (code == 'TOUT' ? null : code) : null;
+                  _categorie = valeur;
+                }),
+                controlAffinity: ListTileControlAffinity.leading,
+                title: Text(_libelle(code)),
+              ),
+            ],
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, _categorie),
+              child: const Text('Appliquer'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

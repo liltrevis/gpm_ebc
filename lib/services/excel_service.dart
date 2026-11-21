@@ -255,6 +255,7 @@ class ExcelService {
     String titre, {
     required List<Map<String, Object?>> concernes,
     required List<ColonneEtat> colonnes,
+    String? nomFichier,
   }) async {
     final excel = Excel.createExcel();
     final sheet = excel['Etat'];
@@ -290,7 +291,8 @@ class ExcelService {
         largeurs: largeurs,
       );
     }
-    final chemin = await _basePath('etat_${_slug(titre)}_${aujourdHui()}.xlsx');
+    final chemin = await _basePath(
+        '${nomFichier == null || nomFichier.isEmpty ? 'etat_${_slug(titre)}_${aujourdHui()}' : nomFichier}.xlsx');
     await _ecrire(excel, path: chemin);
     return chemin;
   }

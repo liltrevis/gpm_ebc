@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/colonnes_etat.dart';
+import '../core/constants.dart';
 import '../core/etats.dart';
-import '../core/format.dart';
 import '../core/positions.dart';
 import '../models/personnel.dart';
 import '../providers/auth_provider.dart';
@@ -12,6 +12,7 @@ import '../providers/personnel_provider.dart';
 import '../providers/referentiel_provider.dart';
 import '../services/excel_service.dart';
 import '../services/pdf_service.dart';
+import '../services/word_service.dart';
 import '../widgets/colonnes_etat_dialog.dart';
 
 /// Sentinelle de l'option "AJOUTER" du menu de precision.
@@ -33,6 +34,7 @@ class EtatListeScreen extends StatefulWidget {
 class _EtatListeScreenState extends State<EtatListeScreen> {
   final _nom = TextEditingController();
   final _duree = TextEditingController();
+  final _recherche = TextEditingController();
   List<Personnel> _membres = [];
   final Set<int> _exclus = {};
   bool _loading = true;
@@ -147,10 +149,22 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
     });
   }
 
+  Future<void> _ouvrirCategorie() async {
+    final resultat = await showModalBottomSheet<String?>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _CategoriePanel(initial: _categorieAffichage),
+    );
+    if (resultat != null && mounted) {
+      setState(() => _categorieAffichage = resultat);
+    }
+  }
+
   @override
   void dispose() {
     _nom.dispose();
     _duree.dispose();
+    _recherche.dispose();
     super.dispose();
   }
 
@@ -176,8 +190,16 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
 
   bool _dansCategorie(Personnel p) {
     if (_categorieAffichage == null) return true;
-    return categorieDe(p).toLowerCase() ==
-        _categorieAffichage!.trim().toLowerCase();
+    return categorieDepuisGrade(p.gradeCode) == _categorieAffichage;
+  }
+
+  bool _matchRecherche(Personnel p) {
+    final q = _recherche.text.trim().toLowerCase();
+    if (q.isEmpty) return true;
+    final texte = '${p.nomPrenoms} ${p.matricule ?? ''} '
+            '${p.mecano ?? ''} ${p.gradeCode ?? ''} ${p.gradeLibelle ?? ''}'
+        .toLowerCase();
+    return texte.contains(q);
   }
 
   List<Map<String, Object?>> _construireConcernes() {
@@ -211,7 +233,7 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
   // ---------------------------------------------------------------------------
   // Export / enregistrement.
   // ---------------------------------------------------------------------------
-  Future<void> _exporter({required bool pdf}) async {
+  Future<void> _exporter() async {
     if (!_estListe && _position == null) {
       _snack('Choisissez une position.');
       return;
@@ -220,28 +242,73 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
       _snack('Aucun personnel selectionne.');
       return;
     }
+    final choix = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: Text('Exporter',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.picture_as_pdf),
+              title: const Text('PDF'),
+              onTap: () => Navigator.pop(ctx, 'pdf'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.table_chart),
+              title: const Text('Excel'),
+              onTap: () => Navigator.pop(ctx, 'excel'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.description),
+              title: const Text('Word'),
+              onTap: () => Navigator.pop(ctx, 'word'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choix == null || !mounted) return;
     final colonnes = await choisirColonnesEtat(context);
     if (colonnes == null) return;
     final concernes = _construireConcernes();
     final sousTitre = _estListe
-        ? 'Liste${_dureeValeur == null ? '' : ' - Dur├®e ${_dureeValeur!}'}'
-        : '$_position${_dureeValeur == null ? '' : ' - Dur├®e ${_dureeValeur!}'}';
+        ? 'Liste${_dureeValeur == null ? '' : ' - Duree ${_dureeValeur!}'}'
+        : '$_position${_dureeValeur == null ? '' : ' - Duree ${_dureeValeur!}'}';
     try {
-      if (pdf) {
-        final bytes = await PdfService.etatListe(
-          _titre,
-          sousTitre: sousTitre,
-          concernes: concernes,
-          colonnes: colonnes,
-        );
-        await PdfService.partager(bytes, 'etat_${_slug(_titre)}_${aujourdHui()}.pdf');
-      } else {
-        final path = await ExcelService.etatListe(
-          _titre,
-          concernes: concernes,
-          colonnes: colonnes,
-        );
-        if (mounted) _snack('Export Excel: $path');
+      switch (choix) {
+        case 'pdf':
+          final bytes = await PdfService.etatListe(
+            _titre,
+            sousTitre: sousTitre,
+            concernes: concernes,
+            colonnes: colonnes,
+          );
+          await PdfService.partager(bytes, '${_slug(_titre)}.pdf');
+          break;
+        case 'excel':
+          final path = await ExcelService.etatListe(
+            _titre,
+            concernes: concernes,
+            colonnes: colonnes,
+            nomFichier: _slug(_titre),
+          );
+          if (mounted) _snack('Export Excel: $path');
+          break;
+        case 'word':
+          final path = await WordService.etat(
+            _titre,
+            sousTitre: sousTitre,
+            concernes: concernes,
+            colonnes: colonnes,
+            nomFichier: _slug(_titre),
+          );
+          if (mounted) _snack('Export Word: $path');
+          break;
       }
     } catch (e) {
       if (mounted) _snack('Export impossible: $e');
@@ -273,7 +340,7 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
         utilisateurId: auth.user?.id,
       );
       if (!mounted) return;
-      _snack('Liste "$nom" enregistr├®e (${inclus.length} personne(s)).');
+      _snack('Liste "$nom" enregistree (${inclus.length} personne(s)).');
       Navigator.of(context).pop(true);
       return;
     }
@@ -293,7 +360,7 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
           'Enregistrer l\'etat "$nom" (${inclus.length} personne(s)) ?\n\n'
           'Mettre a jour la position des personnes incluses vers "$pos"'
           '${precision == null ? '' : ' ($precision)'} ?\n'
-          'Dur├®e : ${texteDuree(_dureeValeur)}',
+          'Duree : ${texteDuree(_dureeValeur)}',
         ),
         actions: [
           TextButton(
@@ -334,9 +401,9 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
   }
 
   String _slug(String texte) => texte
-      .replaceAll('├®', 'e')
-      .replaceAll('├¿', 'e')
-      .replaceAll('├á', 'a')
+      .replaceAll('é', 'e')
+      .replaceAll('è', 'e')
+      .replaceAll('à', 'a')
       .replaceAll(' ', '_')
       .replaceAll(RegExp(r'[^A-Za-z0-9_]'), '');
 
@@ -362,177 +429,240 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
+          : Column(
               children: [
-                TextField(
-                  controller: _nom,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: InputDecoration(
-                    labelText: _estListe ? 'Nom de la liste *' : 'Nom de l\'etat *',
-                    prefixIcon: const Icon(Icons.playlist_add),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _duree,
-                  decoration: const InputDecoration(
-                    labelText: 'Dur├®e',
-                    hintText: 'ex : 15 jours ÔÇö vide = ind├®termin├®',
-                    prefixIcon: Icon(Icons.schedule),
-                  ),
-                ),
-                if (!_estListe) ...[
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    initialValue: _position,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                        labelText: 'Position', prefixIcon: Icon(Icons.place)),
-                    items: [
-                      for (final p in kPositions)
-                        DropdownMenuItem(value: p, child: Text(p)),
-                    ],
-                    onChanged: (v) {
-                      final ancien = _position;
-                      setState(() {
-                        if (_nom.text.trim().isEmpty || _nom.text == ancien) {
-                          _nom.text = v ?? '';
-                        }
-                        _position = v;
-                        _precision = null;
-                        _appliquerPosition(v);
-                      });
-                      _chargerPrecisions();
-                    },
-                  ),
-                  if (_precisions.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      initialValue: _precision,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                          labelText: 'Precision', prefixIcon: Icon(Icons.tune)),
-                      items: [
-                        ..._precisions.map(
-                            (p) => DropdownMenuItem(value: p, child: Text(p))),
-                        const DropdownMenuItem(
-                          value: _sentinelAjouter,
-                          child: Text('+ AJOUTER',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextField(
+                        controller: _nom,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: InputDecoration(
+                          labelText: _estListe ? 'Nom de la liste *' : 'Nom de l\'etat *',
+                          prefixIcon: const Icon(Icons.playlist_add),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _duree,
+                        decoration: const InputDecoration(
+                          labelText: 'Duree',
+                          hintText: 'ex : 15 jours - vide = indetermine',
+                          prefixIcon: Icon(Icons.schedule),
+                        ),
+                      ),
+                      if (!_estListe) ...[
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          initialValue: _position,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                              labelText: 'Position', prefixIcon: Icon(Icons.place)),
+                          items: [
+                            for (final p in kPositions)
+                              DropdownMenuItem(value: p, child: Text(p)),
+                          ],
+                          onChanged: (v) {
+                            final ancien = _position;
+                            setState(() {
+                              if (_nom.text.trim().isEmpty || _nom.text == ancien) {
+                                _nom.text = v ?? '';
+                              }
+                              _position = v;
+                              _precision = null;
+                              _appliquerPosition(v);
+                            });
+                            _chargerPrecisions();
+                          },
+                        ),
+                        if (_precisions.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<String>(
+                            initialValue: _precision,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                                labelText: 'Precision', prefixIcon: Icon(Icons.tune)),
+                            items: [
+                              ..._precisions.map(
+                                  (p) => DropdownMenuItem(value: p, child: Text(p))),
+                              const DropdownMenuItem(
+                                value: _sentinelAjouter,
+                                child: Text('+ AJOUTER',
+                                    style: TextStyle(fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                            onChanged: (v) {
+                              if (v == _sentinelAjouter) {
+                                _ajouterPrecision();
+                              } else {
+                                setState(() => _precision = v);
+                              }
+                            },
+                          ),
+                        ],
+                      ],
+                      if (_estListe) ...[
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: _ouvrirCategorie,
+                          icon: const Icon(Icons.filter_list),
+                          label: Text(_categorieAffichage == null
+                              ? 'Afficher : Tout le monde'
+                              : 'Afficher : ${kCategories[_categorieAffichage] ?? _categorieAffichage}'),
                         ),
                       ],
-                      onChanged: (v) {
-                        if (v == _sentinelAjouter) {
-                          _ajouterPrecision();
-                        } else {
-                          setState(() => _precision = v);
-                        }
-                      },
-                    ),
-                  ],
-                ],
-                if (_estListe) ...[
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    initialValue: _categorieAffichage,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                        labelText: 'Afficher', prefixIcon: Icon(Icons.filter_list)),
-                    items: [
-                      const DropdownMenuItem<String>(
-                          value: null, child: Text('Tout le monde')),
-                      const DropdownMenuItem<String>(
-                          value: 'Officier', child: Text('Officier')),
-                      const DropdownMenuItem<String>(
-                          value: 'Sous-officier',
-                          child: Text('Sous-officier')),
-                      const DropdownMenuItem<String>(
-                          value: 'Militaire du rang',
-                          child: Text('Militaire du rang')),
-                    ],
-                    onChanged: (v) => setState(() => _categorieAffichage = v),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Militaires concernes',
-                        style: Theme.of(context).textTheme.titleSmall),
-                    Text('${_inclus.length} / ${_membres.length}'),
-                  ],
-                ),
-                Row(
-                  children: [
-                    TextButton.icon(
-                      onPressed: _membres.isEmpty ? null : _toutSelectionner,
-                      icon: const Icon(Icons.check_box_outlined, size: 18),
-                      label: const Text('Tout s├®lectionner'),
-                    ),
-                    TextButton.icon(
-                      onPressed: _membres.isEmpty ? null : _toutDecocher,
-                      icon: const Icon(Icons.check_box_outline_blank, size: 18),
-                      label: const Text('Tout d├®cocher'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                if (_membres.isEmpty)
-                  const Card(
-                      child: ListTile(title: Text('Aucun personnel.')))
-                else
-                  ..._membres.asMap().entries.map((e) {
-                    final i = e.key;
-                    final p = e.value;
-                    final inclus = !_exclus.contains(i) && _dansCategorie(p);
-                    return CheckboxListTile(
-                      value: inclus,
-                      onChanged: (v) => setState(() {
-                        if (v == true) {
-                          _exclus.remove(i);
-                        } else {
-                          _exclus.add(i);
-                        }
-                      }),
-                      controlAffinity: ListTileControlAffinity.leading,
-                      title: Text(
-                        inclus ? '${_rang(i)}. ${p.nomPrenoms}' : p.nomPrenoms,
-                        style: TextStyle(
-                          fontWeight:
-                              inclus ? FontWeight.w600 : FontWeight.normal,
-                          decoration: inclus
-                              ? TextDecoration.none
-                              : TextDecoration.lineThrough,
-                          color: inclus ? null : Colors.grey,
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Militaires concernes',
+                              style: Theme.of(context).textTheme.titleSmall),
+                          Text('${_inclus.length} / ${_membres.length}'),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          TextButton.icon(
+                            onPressed: _membres.isEmpty ? null : _toutSelectionner,
+                            icon: const Icon(Icons.check_box_outlined, size: 18),
+                            label: const Text('Tout selectionner'),
+                          ),
+                          TextButton.icon(
+                            onPressed: _membres.isEmpty ? null : _toutDecocher,
+                            icon: const Icon(Icons.check_box_outline_blank, size: 18),
+                            label: const Text('Tout decocher'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _recherche,
+                        decoration: const InputDecoration(
+                          hintText: 'Rechercher (nom, matricule, mecano, grade)',
+                          prefixIcon: Icon(Icons.search),
+                          isDense: true,
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _exporter,
+                          icon: const Icon(Icons.file_download),
+                          label: const Text('Exporter'),
                         ),
                       ),
-                      subtitle: Text(
-                        '${p.gradeCode ?? p.gradeLibelle ?? ''} ${p.matricule ?? ''} - '
-                        '${libellePosition(p.position, p.positionPrecision).isEmpty ? (p.statutLibelle ?? '') : libellePosition(p.position, p.positionPrecision)}',
-                      ),
-                    );
-                  }),
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: () => _exporter(pdf: true),
-                      icon: const Icon(Icons.picture_as_pdf),
-                      label: const Text('Exporter PDF'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: () => _exporter(pdf: false),
-                      icon: const Icon(Icons.table_chart),
-                      label: const Text('Exporter Excel'),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 24),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      if (_membres.isEmpty)
+                        const Card(
+                            child: ListTile(title: Text('Aucun personnel.')))
+                      else
+                        ..._membres.asMap().entries.where((e) => _matchRecherche(e.value)).map((e) {
+                          final i = e.key;
+                          final p = e.value;
+                          final inclus = !_exclus.contains(i) && _dansCategorie(p);
+                          return CheckboxListTile(
+                            value: inclus,
+                            onChanged: (v) => setState(() {
+                              if (v == true) {
+                                _exclus.remove(i);
+                              } else {
+                                _exclus.add(i);
+                              }
+                            }),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            title: Text(
+                              inclus ? '${_rang(i)}. ${p.nomPrenoms}' : p.nomPrenoms,
+                              style: TextStyle(
+                                fontWeight:
+                                    inclus ? FontWeight.w600 : FontWeight.normal,
+                                decoration: inclus
+                                    ? TextDecoration.none
+                                    : TextDecoration.lineThrough,
+                                color: inclus ? null : Colors.grey,
+                              ),
+                            ),
+                            subtitle: Text(
+                              '${p.gradeCode ?? p.gradeLibelle ?? ''} ${p.matricule ?? ''} - '
+                              '${libellePosition(p.position, p.positionPrecision).isEmpty ? (p.statutLibelle ?? '') : libellePosition(p.position, p.positionPrecision)}',
+                            ),
+                          );
+                        }),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
               ],
             ),
+    );
+  }
+}
+
+/// Panneau de choix de la categorie affichee (menu "Afficher").
+class _CategoriePanel extends StatefulWidget {
+  final String? initial;
+  const _CategoriePanel({required this.initial});
+
+  @override
+  State<_CategoriePanel> createState() => _CategoriePanelState();
+}
+
+class _CategoriePanelState extends State<_CategoriePanel> {
+  late String? _categorie;
+
+  static const List<String> _codes = <String>['TOUT', 'OFF', 'S-OFF', 'MDR'];
+
+  String _libelle(String code) {
+    if (code == 'TOUT') return 'Tout le monde';
+    return kCategories[code] ?? code;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _categorie = widget.initial;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Afficher', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            for (final code in _codes) ...[
+              CheckboxListTile(
+                value: _categorie == (code == 'TOUT' ? null : code),
+                onChanged: (v) => setState(() {
+                  final valeur =
+                      (v ?? false) ? (code == 'TOUT' ? null : code) : null;
+                  _categorie = valeur;
+                }),
+                controlAffinity: ListTileControlAffinity.leading,
+                title: Text(_libelle(code)),
+              ),
+            ],
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, _categorie),
+              child: const Text('Appliquer'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

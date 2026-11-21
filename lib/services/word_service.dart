@@ -7,6 +7,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../core/colonnes_etat.dart';
 import '../core/constants.dart';
 import '../core/format.dart';
 import '../models/service.dart';
@@ -46,6 +47,106 @@ class WordService {
     await File(chemin).writeAsBytes(bytes, flush: true);
     return chemin;
   }
+
+  /// Genere un document Word (.docx) pour un etat (liste nommee) avec les
+  /// colonnes selectionnees.
+  static Future<String> etat(
+    String titre, {
+    String? sousTitre,
+    required List<Map<String, Object?>> concernes,
+    required List<ColonneEtat> colonnes,
+    String? nomFichier,
+  }) async {
+    final bytes = construireEtatBytes(titre,
+        sousTitre: sousTitre,
+        concernes: concernes,
+        colonnes: colonnes,
+        logo: await _logoBytes());
+    final dir = await getApplicationDocumentsDirectory();
+    final base = (nomFichier == null || nomFichier.isEmpty)
+        ? _slug(titre)
+        : nomFichier;
+    final chemin = p.join(dir.path, '$base.docx');
+    await File(chemin).writeAsBytes(bytes, flush: true);
+    return chemin;
+  }
+
+  static Uint8List construireEtatBytes(
+    String titre, {
+    String? sousTitre,
+    required List<Map<String, Object?>> concernes,
+    required List<ColonneEtat> colonnes,
+    Uint8List? logo,
+  }) {
+    final avecLogo = logo != null && logo.isNotEmpty;
+    return _packager(
+        _documentEtat(titre, sousTitre, concernes, colonnes, avecLogo), logo);
+  }
+
+  static String _documentEtat(
+    String titre,
+    String? sousTitre,
+    List<Map<String, Object?>> concernes,
+    List<ColonneEtat> colonnes,
+    bool avecLogo,
+  ) {
+    final corps = StringBuffer();
+    if (avecLogo) {
+      corps.write(_logoXml);
+    }
+    corps.write(_p('2e ESCADRON BLINDE DE COMBAT',
+        bold: true, taille: 22, align: 'center'));
+    corps.write(_p(titre, bold: true, taille: 28, align: 'center'));
+    if (sousTitre != null && sousTitre.isNotEmpty) {
+      corps.write(_p(sousTitre, taille: 18, align: 'center'));
+    }
+    corps.write(_p('', taille: 8));
+    final n = colonnes.isEmpty ? 1 : colonnes.length;
+    final largeur = (9000 ~/ n).clamp(600, 4000);
+    final gridCols = StringBuffer();
+    for (var i = 0; i < n; i++) {
+      gridCols.write('<w:gridCol w:w="$largeur"/>');
+    }
+    corps.write('<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/>'
+        '<w:tblBorders>'
+        '${_bord('top')}${_bord('left')}${_bord('bottom')}${_bord('right')}'
+        '${_bord('insideH')}${_bord('insideV')}'
+        '</w:tblBorders></w:tblPr><w:tblGrid>$gridCols</w:tblGrid>');
+    if (colonnes.isNotEmpty) {
+      corps.write(_tr([
+        for (final c in colonnes)
+          _tc(c.libelle, largeur: largeur, bold: true, fill: 'D9D9D9'),
+      ]));
+    }
+    for (final e in concernes) {
+      corps.write(_tr([
+        for (final c in colonnes) _tc(c.valeur(e), largeur: largeur),
+      ]));
+    }
+    corps.write('</w:tbl>');
+    corps.write(_p(
+        'Genere le ${formatDateHeureFr(DateTime.now().toIso8601String())}',
+        taille: 16));
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document '
+        'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+        'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" '
+        'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+        'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+        '<w:body>$corps<w:sectPr>'
+        '<w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/>'
+        '<w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" '
+        'w:header="720" w:footer="720" w:gutter="0"/>'
+        '</w:sectPr></w:body></w:document>';
+  }
+
+  static String _slug(String texte) => texte
+      .replaceAll('é', 'e')
+      .replaceAll('è', 'e')
+      .replaceAll('à', 'a')
+      .replaceAll(' ', '_')
+      .replaceAll(RegExp(r'[^A-Za-z0-9_]'), '');
 
   // ---------------------------------------------------------------------------
   // Construction OOXML

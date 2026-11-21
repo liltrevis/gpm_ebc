@@ -202,10 +202,8 @@ class _EtatsScreenState extends State<EtatsScreen> {
           onSelected: (v) {
             if (v == 'voir') {
               _voirListe(h, concernes);
-            } else if (v == 'pdf') {
-              _exporterEtat(h, pdf: true);
-            } else if (v == 'excel') {
-              _exporterEtat(h, pdf: false);
+            } else if (v == 'exporter') {
+              _exporterEtat(h);
             } else if (v == 'supprimer') {
               _supprimerEtat(h);
             }
@@ -215,18 +213,11 @@ class _EtatsScreenState extends State<EtatsScreen> {
               const PopupMenuItem(value: 'voir', child: Text('Voir la liste')),
             if (peutExport)
               const PopupMenuItem(
-                  value: 'pdf',
+                  value: 'exporter',
                   child: ListTile(
                       dense: true,
-                      leading: Icon(Icons.picture_as_pdf),
-                      title: Text('Exporter PDF'))),
-            if (peutExport)
-              const PopupMenuItem(
-                  value: 'excel',
-                  child: ListTile(
-                      dense: true,
-                      leading: Icon(Icons.table_chart),
-                      title: Text('Exporter Excel'))),
+                      leading: Icon(Icons.file_download),
+                      title: Text('Exporter'))),
             if (peutGerer)
               const PopupMenuItem(
                   value: 'supprimer',
@@ -309,40 +300,85 @@ class _EtatsScreenState extends State<EtatsScreen> {
   String _titreEtat(Map<String, Object?> h) =>
       _nomListe(h) ?? 'Etat ${etatTypeLibelle(h['type'] as String?)}';
 
-  Future<void> _exporterEtat(Map<String, Object?> h, {required bool pdf}) async {
+  Future<void> _exporterEtat(Map<String, Object?> h) async {
     final concernes = _concernes(h);
     if (concernes.isEmpty) {
       _snack('Aucune donnee a exporter.');
       return;
     }
+    final choix = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: Text('Exporter',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.picture_as_pdf),
+              title: const Text('PDF'),
+              onTap: () => Navigator.pop(ctx, 'pdf'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.table_chart),
+              title: const Text('Excel'),
+              onTap: () => Navigator.pop(ctx, 'excel'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.description),
+              title: const Text('Word'),
+              onTap: () => Navigator.pop(ctx, 'word'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choix == null || !mounted) return;
     final colonnes = await choisirColonnesEtat(context);
     if (colonnes == null) return;
     final titre = _titreEtat(h);
     final duree = _dureeEtat(h);
+    final sousTitre =
+        '${etatTypeLibelle(h['type'] as String?)} - ${afficherDateFr(h['date'] as String?)}'
+        '${duree == null ? '' : ' - DurÃ©e $duree'}';
     try {
-      if (pdf) {
-        final bytes = await PdfService.etatListe(
-          titre,
-          sousTitre:
-              '${etatTypeLibelle(h['type'] as String?)} - ${afficherDateFr(h['date'] as String?)}'
-              '${duree == null ? '' : ' - Durée $duree'}',
-          concernes: concernes,
-          colonnes: colonnes,
-        );
-        await PdfService.partager(bytes, 'etat_${_slug(titre)}_${aujourdHui()}.pdf');
-      } else {
-        final path = await ExcelService.etatListe(
-          titre,
-          concernes: concernes,
-          colonnes: colonnes,
-        );
-        if (mounted) _snack('Export Excel: $path');
+      switch (choix) {
+        case 'pdf':
+          final bytes = await PdfService.etatListe(
+            titre,
+            sousTitre: sousTitre,
+            concernes: concernes,
+            colonnes: colonnes,
+          );
+          await PdfService.partager(bytes, '${_slug(titre)}.pdf');
+          break;
+        case 'excel':
+          final path = await ExcelService.etatListe(
+            titre,
+            concernes: concernes,
+            colonnes: colonnes,
+            nomFichier: _slug(titre),
+          );
+          if (mounted) _snack('Export Excel: $path');
+          break;
+        case 'word':
+          final path = await WordService.etat(
+            titre,
+            sousTitre: sousTitre,
+            concernes: concernes,
+            colonnes: colonnes,
+            nomFichier: _slug(titre),
+          );
+          if (mounted) _snack('Export Word: $path');
+          break;
       }
     } catch (e) {
       if (mounted) _snack('Export impossible: $e');
     }
   }
-
   Future<void> _supprimerEtat(Map<String, Object?> h) async {
     final id = h['id'] as int?;
     if (id == null) return;
