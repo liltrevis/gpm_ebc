@@ -303,6 +303,15 @@ ORDER BY p.nom_prenoms ASC
     'JUILLET', 'AOUT', 'SEPTEMBRE', 'OCTOBRE', 'NOVEMBRE', 'DECEMBRE',
   ];
 
+  /// Effectif reglementaire (theorique) de l'unite, repris du fichier SPA
+  /// source : X=6, Y=29, Z=85 soit un TOTAL de 120. Ce n'est pas un effectif
+  /// calcule a partir de la base : il doit rester identique au document source.
+  static const List<int> effectifTheorique = <int>[6, 29, 85];
+
+  /// Effectif pratique (avec hors TED) du fichier SPA source : 4/25/68,
+  /// soit un TOTAL de 97.
+  static const List<int> effectifPratique = <int>[4, 25, 68];
+
   static String _dateSituation() {
     final d = DateTime.now().toUtc();
     final j = d.day.toString().padLeft(2, '0');
@@ -329,7 +338,10 @@ LEFT JOIN categorie cat ON cat.id = COALESCE(p.categorie_id, g.categorie_id)
 WHERE p.actif = 1$filtre
 ''', [if (sectionId != null) sectionId]);
 
-    final theo = <int>[0, 0, 0];
+    /// Effectif reellement present dans la base (sert aux totaux disponible /
+    /// indisponible). L'effectif THEORIQUE affiche est, lui, fixe par
+    /// [effectifTheorique] conformement au fichier source.
+    final actifs = <int>[0, 0, 0];
     final present = <int>[0, 0, 0];
     final parPos = <String, List<int>>{};
     final parPosPrec = <String, List<int>>{};
@@ -347,7 +359,7 @@ WHERE p.actif = 1$filtre
       final grade = (r['grade_code'] as String? ?? '').trim();
       final nom = (r['nom'] as String? ?? '').trim();
       final nomComplet = [grade, nom].where((e) => e.isNotEmpty).join(' ');
-      theo[i]++;
+      actifs[i]++;
       if (_sansAccent(rubrique).contains('PRESENT')) {
         present[i]++;
       } else {
@@ -365,16 +377,16 @@ WHERE p.actif = 1$filtre
     final rows = <SpaRow>[];
     rows.add(SpaRow(
       libelle: 'EFFECTIF THEORIQUE',
-      officiers: theo[0],
-      sousOfficiers: theo[1],
-      hommesDuRang: theo[2],
+      officiers: effectifTheorique[0],
+      sousOfficiers: effectifTheorique[1],
+      hommesDuRang: effectifTheorique[2],
       type: SpaType.effectif,
     ));
     rows.add(SpaRow(
       libelle: 'EFFECTIF PRATIQUE (AVEC HORS TED)',
-      officiers: theo[0],
-      sousOfficiers: theo[1],
-      hommesDuRang: theo[2],
+      officiers: effectifPratique[0],
+      sousOfficiers: effectifPratique[1],
+      hommesDuRang: effectifPratique[2],
       type: SpaType.effectif,
     ));
 
@@ -421,9 +433,9 @@ WHERE p.actif = 1$filtre
     }
 
     final indispo = <int>[
-      theo[0] - present[0],
-      theo[1] - present[1],
-      theo[2] - present[2],
+      actifs[0] - present[0],
+      actifs[1] - present[1],
+      actifs[2] - present[2],
     ];
     rows.add(SpaRow(
       libelle: 'TOTAL INDISPONIBLE',

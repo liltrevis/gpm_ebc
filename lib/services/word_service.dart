@@ -308,37 +308,27 @@ class WordService {
       _tc('OBS', largeur: _wObs, bold: true, fill: 'D9D9D9'),
     ]));
 
-    final blocs = grouperBlocs(rows);
-    for (final b in blocs) {
-      final fill = b.ligne.type == SpaType.sousRubrique ? null : 'F2F2F2';
+    // Une ligne de tableau par rubrique et par precision : chaque precision
+    // porte ses propres effectifs et sa propre cellule OBS, ce qui permet de
+    // distinguer les noms rattaches a chaque rubrique.
+    for (final ligne in rows) {
+      final fill = ligne.estPrecision ? null : 'F2F2F2';
       sb.write(_tr([
-        _tc(_imbriquer(b.valeursColonne((r) => r.libelle)),
-            largeur: _wLabel, bold: true, fill: fill),
-        _tc(b.valeursColonne((r) => '${r.officiers}').join('\n'),
+        _tc(ligne.libelleAffiche,
+            largeur: _wLabel, bold: !ligne.estPrecision, fill: fill),
+        _tc('${ligne.officiers}',
             largeur: _wOff, align: 'center', fill: fill),
-        _tc(b.valeursColonne((r) => '${r.sousOfficiers}').join('\n'),
+        _tc('${ligne.sousOfficiers}',
             largeur: _wSoff, align: 'center', fill: fill),
-        _tc(b.valeursColonne((r) => '${r.hommesDuRang}').join('\n'),
+        _tc('${ligne.hommesDuRang}',
             largeur: _wMdr, align: 'center', fill: fill),
-        _tc(b.valeursColonne((r) => '${r.total}').join('\n'),
+        _tc('${ligne.total}',
             largeur: _wTotal, align: 'center', bold: true, fill: fill),
-        _tc(b.valeursColonne((r) => r.observation).join('\n'),
-            largeur: _wObs, fill: fill),
+        _tc(ligne.observation, largeur: _wObs, fill: fill),
       ]));
     }
     sb.write('</w:tbl>');
     return sb.toString();
-  }
-
-  /// Assemble les lignes d'une cellule : position (1ere) puis precisions,
-  /// ces dernieres indentees.
-  static String _imbriquer(List<String> lignes) {
-    if (lignes.isEmpty) return '';
-    final buffer = StringBuffer(lignes.first);
-    for (final l in lignes.skip(1)) {
-      buffer.write('\n    $l');
-    }
-    return buffer.toString();
   }
 
   static String _bord(String cote) =>

@@ -286,7 +286,7 @@ class PdfService {
                 _spaCell('OBS', bold: true, align: pw.TextAlign.left, bg: PdfColors.grey300),
               ],
             ),
-            for (final bloc in data.blocs) _spaBlocRow(bloc),
+            for (final ligne in data.rows) _spaLigneRow(ligne),
           ],
         ),
         pw.SizedBox(height: 16),
@@ -317,33 +317,27 @@ class PdfService {
     );
   }
 
-  /// Ligne de tableau pour un bloc SPA : la position puis ses precisions,
-  /// imbriquees dans la meme cellule (une ligne de texte par precision).
-  static pw.TableRow _spaBlocRow(SpaBloc bloc) {
-    final principal = bloc.ligne;
-    final estSous = principal.type == SpaType.sousRubrique;
-    final bg = estSous ? null : PdfColors.grey200;
-    final gras = !estSous;
+  /// Ligne de tableau pour une ligne SPA : chaque rubrique et chaque precision
+  /// occupent leur propre ligne de tableau, avec leurs propres effectifs et
+  /// leur propre cellule OBS. Les noms ne sont plus regroupes dans une cellule
+  /// commune : on distingue ainsi ceux qui se rapportent a chaque rubrique.
+  static pw.TableRow _spaLigneRow(SpaRow ligne) {
+    final estPrecision = ligne.estPrecision;
+    final bg = estPrecision ? null : PdfColors.grey200;
+    final gras = !estPrecision;
     return pw.TableRow(
       decoration: bg == null ? null : pw.BoxDecoration(color: bg),
       children: [
-        _spaCellule(
-          [
-            principal.libelle,
-            for (final p in bloc.precisions) '     ${p.libelle}',
-          ],
-          premierGras: gras,
-          bg: bg,
-        ),
-        _spaCellule(bloc.valeursColonne((r) => '${r.officiers}'),
+        _spaCellule([ligne.libelleAffiche], premierGras: gras, bg: bg),
+        _spaCellule(['${ligne.officiers}'],
             align: pw.TextAlign.center, premierGras: gras, bg: bg),
-        _spaCellule(bloc.valeursColonne((r) => '${r.sousOfficiers}'),
+        _spaCellule(['${ligne.sousOfficiers}'],
             align: pw.TextAlign.center, premierGras: gras, bg: bg),
-        _spaCellule(bloc.valeursColonne((r) => '${r.hommesDuRang}'),
+        _spaCellule(['${ligne.hommesDuRang}'],
             align: pw.TextAlign.center, premierGras: gras, bg: bg),
-        _spaCellule(bloc.valeursColonne((r) => '${r.total}'),
+        _spaCellule(['${ligne.total}'],
             align: pw.TextAlign.center, premierGras: true, bg: bg),
-        _spaCellule(bloc.valeursColonne((r) => r.observation), bg: bg),
+        _spaCellule([ligne.observation], bg: bg),
       ],
     );
   }

@@ -297,8 +297,9 @@ class ExcelService {
     return chemin;
   }
 
-  /// Export Excel du document SPA. Les precisions d'une position sont
-  /// imbriquees dans la cellule de la position (une ligne de tableau par bloc).
+  /// Export Excel du document SPA. Chaque rubrique et chaque precision occupe
+  /// sa propre ligne de tableau, avec sa propre cellule OBS : les noms sont
+  /// ainsi clairement rattaches a la rubrique/precision correspondante.
   static Future<String> spa(SpaData data) async {
     final excel = Excel.createExcel();
     final sheet = excel['SPA'];
@@ -318,15 +319,15 @@ class ExcelService {
       TextCellValue('OBS'),
     ]);
 
-    final blocs = data.blocs;
-    for (final b in blocs) {
+    final lignes = data.rows;
+    for (final ligne in lignes) {
       sheet.appendRow([
-        TextCellValue(_imbriquer(b.valeursColonne((r) => r.libelle))),
-        TextCellValue(b.valeursColonne((r) => '${r.officiers}').join('\n')),
-        TextCellValue(b.valeursColonne((r) => '${r.sousOfficiers}').join('\n')),
-        TextCellValue(b.valeursColonne((r) => '${r.hommesDuRang}').join('\n')),
-        TextCellValue(b.valeursColonne((r) => '${r.total}').join('\n')),
-        TextCellValue(b.valeursColonne((r) => r.observation).join('\n')),
+        TextCellValue(ligne.libelleAffiche),
+        TextCellValue('${ligne.officiers}'),
+        TextCellValue('${ligne.sousOfficiers}'),
+        TextCellValue('${ligne.hommesDuRang}'),
+        TextCellValue('${ligne.total}'),
+        TextCellValue(ligne.observation),
       ]);
     }
 
@@ -336,12 +337,11 @@ class ExcelService {
       sheet,
       ligneEntete: ligneEntete,
       nbColonnes: 6,
-      nbLignesDonnees: blocs.length,
-      largeurs: [30, 11, 11, 11, 11, 64],
+      nbLignesDonnees: lignes.length,
+      largeurs: [30, 11, 11, 11, 11, 80],
     );
-    for (var r = 0; r < blocs.length; r++) {
+    for (var r = 0; r < lignes.length; r++) {
       final rowIndex = ligneEntete + 1 + r;
-      sheet.setRowHeight(rowIndex, _hauteurLigneSpa * blocs[r].hauteur);
       sheet
           .cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIndex))
           .cellStyle = _styleCellule(
@@ -396,20 +396,6 @@ class ExcelService {
     final chemin = await _basePath('astreinte_${data.service.date}.xlsx');
     await _ecrire(excel, path: chemin);
     return chemin;
-  }
-
-  /// Hauteur d'une ligne de texte dans le tableau SPA (multi-lignes).
-  static const double _hauteurLigneSpa = 15.0;
-
-  /// Assemble les lignes d'une meme cellule : la 1ere (position) puis les
-  /// suivantes (precisions) indentees.
-  static String _imbriquer(List<String> lignes) {
-    if (lignes.isEmpty) return '';
-    final buffer = StringBuffer(lignes.first);
-    for (final l in lignes.skip(1)) {
-      buffer.write('\n    $l');
-    }
-    return buffer.toString();
   }
 
   static String _slug(String texte) {

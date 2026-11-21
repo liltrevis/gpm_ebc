@@ -76,11 +76,19 @@ void main() {
     final db = await _base();
     final data = await RapportRepository(db).situationSpa();
 
+    // L'effectif theorique est celui du fichier source (6/29/85 = 120),
+    // independamment du nombre de militaires presents dans la base.
     final theo = _ligne(data, 'EFFECTIF THEORIQUE');
-    expect(theo.officiers, 1);
-    expect(theo.sousOfficiers, 1);
-    expect(theo.hommesDuRang, 3);
-    expect(theo.total, 5);
+    expect(theo.officiers, 6);
+    expect(theo.sousOfficiers, 29);
+    expect(theo.hommesDuRang, 85);
+    expect(theo.total, 120);
+
+    final pratique = _ligne(data, 'EFFECTIF PRATIQUE (AVEC HORS TED)');
+    expect(pratique.officiers, 4);
+    expect(pratique.sousOfficiers, 25);
+    expect(pratique.hommesDuRang, 68);
+    expect(pratique.total, 97);
 
     final mission = _ligne(data, 'Mission');
     expect(mission.type, SpaType.rubrique);
@@ -91,6 +99,8 @@ void main() {
     final lomo = _ligne(data, 'LOMO NORD');
     expect(lomo.type, SpaType.sousRubrique);
     expect(lomo.total, 2);
+    expect(lomo.observation, contains('BRAVO'));
+    expect(lomo.observation, contains('CHARLIE'));
 
     final malade = _ligne(data, 'Malade');
     expect(malade.hommesDuRang, 1);
@@ -140,5 +150,51 @@ void main() {
     expect(xml, contains('Mission'));
     expect(xml, contains('LOMO NORD'));
     expect(xml, contains('Permission'));
+  });
+
+  test('export Word : chaque precision a sa propre ligne et sa cellule OBS', () {
+    final data = SpaData(
+      unite: 'TEST',
+      dateSituation: 'DU 01 JANVIER 2026 0000Z',
+      rows: [
+        const SpaRow(
+          libelle: 'EFFECTIF THEORIQUE',
+          officiers: 6,
+          sousOfficiers: 29,
+          hommesDuRang: 85,
+          type: SpaType.effectif,
+        ),
+        const SpaRow(libelle: 'Mise a disposition', type: SpaType.rubrique),
+        const SpaRow(
+          libelle: 'HAITI',
+          type: SpaType.sousRubrique,
+          observation: 'MDC BOUABRE + BIER BOUAKET',
+        ),
+        const SpaRow(
+          libelle: 'INTERNE',
+          type: SpaType.sousRubrique,
+          observation: 'ADJ OUATTARA S.',
+        ),
+      ],
+    );
+    final bytes = WordService.construireBytes(data);
+    final archive = ZipDecoder().decodeBytes(bytes);
+    final doc = archive.files.firstWhere((f) => f.name == 'word/document.xml');
+    final xml = utf8.decode(doc.content as List<int>);
+
+    // 1 ligne d'en-tete + 4 lignes de donnees : plus de cellule multi-lignes.
+    expect(RegExp(r'<w:tr>').allMatches(xml).length, 5);
+    final lignes = RegExp(r'<w:tr>.*?</w:tr>', dotAll: true)
+        .allMatches(xml)
+        .map((m) => m.group(0)!)
+        .toList();
+
+    expect(lignes[1], contains('120'));
+    expect(lignes[3], contains('HAITI'));
+    expect(lignes[3], contains('MDC BOUABRE + BIER BOUAKET'));
+    expect(lignes[3], isNot(contains('ADJ OUATTARA S.')));
+    expect(lignes[4], contains('INTERNE'));
+    expect(lignes[4], contains('ADJ OUATTARA S.'));
+    expect(lignes[4], isNot(contains('MDC BOUABRE')));
   });
 }

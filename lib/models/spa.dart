@@ -22,6 +22,13 @@ class SpaRow {
   });
 
   int get total => officiers + sousOfficiers + hommesDuRang;
+
+  /// True pour une precision (sous-rubrique) d'une position.
+  bool get estPrecision => type == SpaType.sousRubrique;
+
+  /// Libelle affiche : les precisions sont indentees sous leur rubrique tout
+  /// en occupant leur propre cellule (une ligne de tableau par precision).
+  String get libelleAffiche => estPrecision ? '    $libelle' : libelle;
 }
 
 /// Document SPA complet pret a etre exporte (PDF / Excel / Word).
