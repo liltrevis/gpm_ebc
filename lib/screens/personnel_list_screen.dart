@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/constants.dart';
 import '../core/theme.dart';
 import '../providers/auth_provider.dart';
 import '../providers/autorisation_provider.dart';
@@ -139,17 +140,26 @@ class _PersonnelListScreenState extends State<PersonnelListScreen> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: OutlinedButton.icon(
-                    onPressed: _ouvrirTri,
-                    icon: const Icon(Icons.sort),
-                    label: Text(
-                      prov.trisEffectif.isEmpty
-                          ? 'Trier par'
-                          : 'Tri : ${prov.trisEffectif.map(_libelleTri).join(' > ')}',
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _ouvrirTri,
+                        icon: const Icon(Icons.sort),
+                        label: Text(
+                          prov.trisEffectif.isEmpty
+                              ? 'Trier par'
+                              : 'Tri : ${prov.trisEffectif.map(_libelleTri).join(' > ')}',
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: _ouvrirCategorie,
+                      icon: const Icon(Icons.filter_list),
+                      label: const Text('Afficher'),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -225,6 +235,17 @@ class _PersonnelListScreenState extends State<PersonnelListScreen> {
     }
   }
 
+  Future<void> _ouvrirCategorie() async {
+    final resultat = await showModalBottomSheet<String?>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _CategoriePanel(initial: context.read<PersonnelProvider>().filtreCategorie),
+    );
+    if (resultat != null && mounted) {
+      context.read<PersonnelProvider>().filtrerParCategorie(resultat);
+    }
+  }
+
   Widget _badge(String texte) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -233,6 +254,66 @@ class _PersonnelListScreenState extends State<PersonnelListScreen> {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(texte, style: const TextStyle(fontSize: 11)),
+    );
+  }
+}
+
+/// Panneau de choix de la categorie affichee (menu "Afficher").
+class _CategoriePanel extends StatefulWidget {
+  final String? initial;
+  const _CategoriePanel({required this.initial});
+
+  @override
+  State<_CategoriePanel> createState() => _CategoriePanelState();
+}
+
+class _CategoriePanelState extends State<_CategoriePanel> {
+  late String? _categorie;
+
+  static const List<String> _codes = <String>['TOUT', 'OFF', 'S-OFF', 'MDR'];
+
+  String _libelle(String code) {
+    if (code == 'TOUT') return 'Tout le monde';
+    return kCategories[code] ?? code;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _categorie = widget.initial;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Afficher', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            for (final code in _codes) ...[
+              CheckboxListTile(
+                value: _categorie == (code == 'TOUT' ? null : code),
+                onChanged: (v) => setState(() {
+                  final valeur =
+                      (v ?? false) ? (code == 'TOUT' ? null : code) : null;
+                  _categorie = valeur;
+                }),
+                controlAffinity: ListTileControlAffinity.leading,
+                title: Text(_libelle(code)),
+              ),
+            ],
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, _categorie),
+              child: const Text('Appliquer'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -21,6 +21,9 @@ class PersonnelProvider extends ChangeNotifier {
   List<String>? filtreStatutCodes;
   bool? filtreDisponible;
 
+  /// Categorie de grade (code) imposee par le menu "Afficher" (null = tout).
+  String? filtreCategorie;
+
   /// Criteres de tri appliques, du plus prioritaire au moins prioritaire.
   List<TriEffectif> trisEffectif = [];
 
@@ -53,6 +56,11 @@ class PersonnelProvider extends ChangeNotifier {
         statutCodes: filtreStatutCodes,
         disponible: filtreDisponible,
       );
+      if (filtreCategorie != null) {
+        liste = liste
+            .where((p) => categorieDepuisGrade(p.gradeCode) == filtreCategorie)
+            .toList();
+      }
       _appliquerTri();
     } finally {
       loading = false;
@@ -116,6 +124,12 @@ class PersonnelProvider extends ChangeNotifier {
   void filtrerParStatut(String? statutCode) {
     filtreStatutCodes = statutCode == null ? null : [statutCode];
     filtreDisponible = null;
+    charger();
+  }
+
+  /// Filtre la liste des effectifs par une seule categorie de grade.
+  void filtrerParCategorie(String? code) {
+    filtreCategorie = code;
     charger();
   }
 
