@@ -429,8 +429,15 @@ class _ModifierGroupeScreenState extends State<ModifierGroupeScreen> {
                       const SizedBox(height: 12),
                       OutlinedButton.icon(
                         onPressed: _ouvrirCategorie,
-                        icon: const Icon(Icons.filter_list),
-                        label: const Text('Afficher'),
+                        icon: const Icon(Icons.filter_list, size: 16),
+                        label: const Text('Afficher',
+                            style: TextStyle(fontSize: 12)),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
                       ),
                     ],
                   ),

@@ -507,10 +507,19 @@ class _EtatListeScreenState extends State<EtatListeScreen> {
                         const SizedBox(height: 12),
                         OutlinedButton.icon(
                           onPressed: _ouvrirCategorie,
-                          icon: const Icon(Icons.filter_list),
-                          label: Text(_categorieAffichage == null
-                              ? 'Afficher : Tout le monde'
-                              : 'Afficher : ${kCategories[_categorieAffichage] ?? _categorieAffichage}'),
+                          icon: const Icon(Icons.filter_list, size: 16),
+                          label: Text(
+                            _categorieAffichage == null
+                                ? 'Afficher'
+                                : 'Afficher : ${kCategories[_categorieAffichage] ?? _categorieAffichage}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 6),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
                         ),
                       ],
                       const SizedBox(height: 12),

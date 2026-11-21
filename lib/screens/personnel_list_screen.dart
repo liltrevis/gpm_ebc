@@ -141,23 +141,36 @@ class _PersonnelListScreenState extends State<PersonnelListScreen> {
                 ),
                 const SizedBox(height: 8),
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _ouvrirTri,
-                        icon: const Icon(Icons.sort),
-                        label: Text(
-                          prov.trisEffectif.isEmpty
-                              ? 'Trier par'
-                              : 'Tri : ${prov.trisEffectif.map(_libelleTri).join(' > ')}',
-                        ),
+                    OutlinedButton.icon(
+                      onPressed: _ouvrirTri,
+                      icon: const Icon(Icons.sort, size: 16),
+                      label: Text(
+                        prov.trisEffectif.isEmpty
+                            ? 'Trier par'
+                            : 'Tri : ${prov.trisEffectif.map(_libelleTri).join(' > ')}',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                     ),
                     const SizedBox(width: 8),
                     OutlinedButton.icon(
                       onPressed: _ouvrirCategorie,
-                      icon: const Icon(Icons.filter_list),
-                      label: const Text('Afficher'),
+                      icon: const Icon(Icons.filter_list, size: 16),
+                      label: const Text('Afficher',
+                          style: TextStyle(fontSize: 12)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
                     ),
                   ],
                 ),
