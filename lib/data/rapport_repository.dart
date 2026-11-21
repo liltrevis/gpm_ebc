@@ -308,10 +308,6 @@ ORDER BY p.nom_prenoms ASC
   /// calcule a partir de la base : il doit rester identique au document source.
   static const List<int> effectifTheorique = <int>[6, 29, 85];
 
-  /// Effectif pratique (avec hors TED) du fichier SPA source : 4/25/68,
-  /// soit un TOTAL de 97.
-  static const List<int> effectifPratique = <int>[4, 25, 68];
-
   static String _dateSituation() {
     final d = DateTime.now().toUtc();
     final j = d.day.toString().padLeft(2, '0');
@@ -338,9 +334,10 @@ LEFT JOIN categorie cat ON cat.id = COALESCE(p.categorie_id, g.categorie_id)
 WHERE p.actif = 1$filtre
 ''', [if (sectionId != null) sectionId]);
 
-    /// Effectif reellement present dans la base (sert aux totaux disponible /
-    /// indisponible). L'effectif THEORIQUE affiche est, lui, fixe par
-    /// [effectifTheorique] conformement au fichier source.
+    /// Effectif reel de la "situation des effectifs" (personnel actif par
+    /// categorie). Il alimente l'EFFECTIF PRATIQUE ainsi que les totaux
+    /// disponible / indisponible. L'effectif THEORIQUE affiche est, lui, fixe
+    /// par [effectifTheorique] conformement au fichier source.
     final actifs = <int>[0, 0, 0];
     final present = <int>[0, 0, 0];
     final parPos = <String, List<int>>{};
@@ -382,11 +379,14 @@ WHERE p.actif = 1$filtre
       hommesDuRang: effectifTheorique[2],
       type: SpaType.effectif,
     ));
+    // Effectif pratique actualise avec la situation des effectifs : il suit
+    // le personnel reellement actif (les memes chiffres que la carte
+    // "Effectif total" du tableau de bord), et non une valeur figee.
     rows.add(SpaRow(
       libelle: 'EFFECTIF PRATIQUE (AVEC HORS TED)',
-      officiers: effectifPratique[0],
-      sousOfficiers: effectifPratique[1],
-      hommesDuRang: effectifPratique[2],
+      officiers: actifs[0],
+      sousOfficiers: actifs[1],
+      hommesDuRang: actifs[2],
       type: SpaType.effectif,
     ));
 

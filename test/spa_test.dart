@@ -84,11 +84,13 @@ void main() {
     expect(theo.hommesDuRang, 85);
     expect(theo.total, 120);
 
+    // L'effectif pratique est actualise depuis la situation des effectifs :
+    // il suit le personnel reellement actif (5 personnes dans cette base).
     final pratique = _ligne(data, 'EFFECTIF PRATIQUE (AVEC HORS TED)');
-    expect(pratique.officiers, 4);
-    expect(pratique.sousOfficiers, 25);
-    expect(pratique.hommesDuRang, 68);
-    expect(pratique.total, 97);
+    expect(pratique.officiers, 1);
+    expect(pratique.sousOfficiers, 1);
+    expect(pratique.hommesDuRang, 3);
+    expect(pratique.total, 5);
 
     final mission = _ligne(data, 'Mission');
     expect(mission.type, SpaType.rubrique);
@@ -115,6 +117,30 @@ void main() {
     expect(dispo.officiers, 1);
     expect(dispo.hommesDuRang, 1);
     expect(dispo.total, 2);
+
+    await db.close();
+  });
+
+  test("l'effectif pratique suit la situation des effectifs, pas le theorique",
+      () async {
+    final db = await _base();
+    await db.insert('personnel', {
+      'id': 6,
+      'actif': 1,
+      'nom_prenoms': 'FOXTROT',
+      'position': 'Présent',
+      'position_precision': null,
+      'grade_id': 1,
+      'categorie_id': 1,
+    });
+
+    final data = await RapportRepository(db).situationSpa();
+    final pratique = _ligne(data, 'EFFECTIF PRATIQUE (AVEC HORS TED)');
+    expect(pratique.officiers, 2);
+    expect(pratique.total, 6);
+
+    final theo = _ligne(data, 'EFFECTIF THEORIQUE');
+    expect(theo.total, 120);
 
     await db.close();
   });
